@@ -174,7 +174,7 @@ sshd_config() {
 }
 
 # 配置 firewalld
-config_firewalld() {
+disable_firewalld() {
     INFO 35 2 "Starting config firewalld...\n开始配置firewallD防火墙..."
     rpm -qa | grep firewalld >> /dev/null
     if [ $? -eq 0 ]; then
@@ -218,11 +218,11 @@ net.ipv4.tcp_syncookies = 1
 # 开启重用。允许将TIME-WAIT sockets 重新用于新的TCP 连接
 net.ipv4.tcp_tw_reuse = 1
 net.ipv4.tcp_tw_recycle = 1
-# timewait的数量，默认18000
-net.ipv4.tcp_max_tw_buckets = 8000
 net.ipv4.tcp_fin_timeout = 30
 # 当keepalive 起用的时候，TCP 发送keepalive 消息的频度。缺省是2 小时
 net.ipv4.tcp_keepalive_time = 600
+# timewait的数量，默认18000
+net.ipv4.tcp_max_tw_buckets = 8000
 # 开启反向路径过滤
 net.ipv4.conf.all.rp_filter = 1
 EOF
@@ -303,21 +303,21 @@ other() {
 
 #main function
 main() {
+    user_create
+    user_del
     system_update
     config_nameserver
     timezone_config
     selinux_config
     ulimit_config
+    sshd_config
+    disable_firewalld
     bashrc_config
     vim_config
     config_sysctl
     disable_ipv6
     password_config
     disable_serivces
-    user_del
-    user_create
-    sshd_config
-    config_firewalld
     other
 }
 # execute main functions
