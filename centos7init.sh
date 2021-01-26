@@ -22,16 +22,12 @@ function INFO() {
     sleep "$2"
     echo ""
 }
-ipadd=$(ifconfig eth0 | awk '/inet/ {print $2}' | cut -f2 -d ":" | awk 'NR==1 {print $1}')
 #安装目录
-ENV_PATH="/usr/local/env"
+ENV_PATH="/usr/local"
 #源码包存放目录
-SOURCE_PATH="$(
-    cd $(dirname $0)
-    pwd
-)/install_tar"
+SOURCE_PATH="$(cd $(dirname -- $0); pwd)/install_tar"
 #LNMP配置文件的目录
-CONF_PATH="/data/lnmp/conf"
+CONF_PATH="$(cd $(dirname -- $0); pwd)/conf"
 #逻辑CPU个数
 THREAD=$(grep 'processor' /proc/cpuinfo | sort -u | wc -l)
 
@@ -54,34 +50,31 @@ if [ $(id -u) != "0" ]; then
     INFO 31 1 "Error: You must be root to run this script, please use root to initialization OS.\n 错误：您必须是 root 用户才能运行此脚本，请使用 root 用户身份来初始化操作系统。"
     exit 1
 fi
-sleep 6
-
-lnmp_dir=$(dirname "$(readlink -f $0)")
-pushd ${lnmp_dir} >/dev/null
+sleep 5
 
 # start Time
 startTime=$(date +%s)
-#Create Ops user
-user_create() {
-    INFO 32 1 "Create User\n 创建用户"
-    read -p "输入用户名：" name
-    read -p "输入密码：" -s -r passwd
-    read -p "输入您的公钥：" rsa
-    read -p "输入ssh端口号：" sshp
-    useradd -G wheel $name && echo $Password | passwd --stdin $name &>/dev/null
-    cd /home/$name && mkdir .ssh && chown $name:$name .ssh && chmod 700 .ssh && cd .ssh
-    echo "$rsa" >>authorized_keys && chown $name:$name authorized_keys && chmod 600 authorized_keys
-    echo "$name ALL=(ALL) NOPASSWD: ALL" >>/etc/sudoers
-    history -cw
-    sleep 3
-    echo ""
-    echo "OPS user: $name create is successful..."
-    echo ""
+
+# 更新系统并安装软件包
+system_update() {
+    INFO 35 2 "*** Starting update system && install tools pakeage... ***\n        *** 正在启动更新系统 && 安装工具包... ***"
+    curl -o /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
+    yum -y upgrade
+    command -v lsb_release > /dev/null 2>&1 || {
+        [ -e "/etc/euleros-release" ] && yum -y install euleros-lsb || yum -y install redhat-lsb-core
+    }
+    command -v gcc > /dev/null 2>&1 || yum -y install gcc
+    # install openssh-server openssh-clients
+    yum -y install openssh-server openssh-clients
+    # install vim authconfig libselinux-utils initscripts net-tools
+    yum install -y vim authconfig libselinux-utils initscripts net-tools
+    rm -rf /var/cache/yum/*
+    [ $? -eq 0 ] && INFO 36 2 "System upgrade && install pakeages complete.\n 系统升级和程序安装完成。"
 }
 
-# delete useless user and group
+# 删除无用的用户和组
 user_del() {
-    INFO 32 1 "Delete useless user\n 删除无用的用户和组"
+    INFO 35 2 "Delete useless user\n 删除无用的用户和组"
     userdel -r adm
     userdel -r lp
     userdel -r games
@@ -92,26 +85,27 @@ user_del() {
     groupdel video
     groupdel ftp
     echo ""
+    INFO 36 2 "Delete useless user is successful...\n删除无用的用户完成。"
 }
 
-# update system & install pakeage
+# 配置DNS服务器
 config_nameserver() {
     nameserver=$(grep nameserver /etc/resolv.conf | wc -l)
     if [ $nameserver -ge 1 ]; then
-        INFO 31 2 "nameserver is exist."
+        INFO 31 2 "nameserver is exist.\nDNS服务器已存在。"
     else
         INFO 32 2 "add nameserver in /etc/resolv.conf"
-        echo "nameserver 223.5.5.5" >>/etc/resolv.conf
-        INFO 36 2 "nameserver config complete."
+        echo "nameserver 223.5.5.5" >> /etc/resolv.conf
+        INFO 36 2 "nameserver config complete.\nDNS服务器配置完成。"
     fi
 }
 
-# Set timezone synchronization
+# 设置时区同步
 timezone_config() {
-    INFO 35 2 "Setting timezone..."
+    INFO 35 2 "Setting timezone: Asia/Shanghai...\n设置时区为: Asia/Shanghai"
     /usr/bin/timedatectl | grep "Asia/Shanghai"
     if [ $? -eq 0 ]; then
-        INFO 33 1 "System timezone is Asia/Shanghai."
+        INFO 33 1 "System timezone is Asia/Shanghai.\n系统时区为Asia/Shanghai。"
     else
         timedatectl set-local-rtc 0 && timedatectl set-timezone Asia/Shanghai
     fi
@@ -119,197 +113,99 @@ timezone_config() {
     #yum -y install chrony
     #sed -i '/server 3.centos.pool.ntp.org iburst/a\\server ntp1.aliyun.com iburst\nserver ntp2.aliyun.com iburst\nserver ntp3.aliyun.com iburst\nserver ntp4.aliyun.com iburst\nserver ntp5.aliyun.com iburst\nserver ntp6.aliyun.com iburst\nserver ntp7.aliyun.com iburst' /etc/chrony.conf
     #systemctl enable chronyd.service && systemctl start chronyd.service
-    INFO 36 2 "Setting timezone && Sync network time complete."
+    INFO 36 2 "Setting timezone & Sync network time complete.\n设置时区和同步网络时间完成。"
 }
 
-system_update() {
-    INFO 35 2 "*** Starting update system && install tools pakeage... ***\n        *** 正在启动更新系统 && 安装工具包... ***"
-    # del openssl
-    [ -e "/usr/local/bin/openssl" ] && rm -rf /usr/local/bin/openssl
-    [ -e "/usr/local/include/openssl" ] && rm -rf /usr/local/include/openssl
-    curl -o /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
-    yum -y upgrade
-    command -v lsb_release >/dev/null 2>&1 || {
-        [ -e "/etc/euleros-release" ] && yum -y install euleros-lsb || yum -y install redhat-lsb-core
-    }
-    command -v gcc >/dev/null 2>&1 || yum -y install gcc
-    # install openssh-server openssh-clients
-    yum -y install openssh-server openssh-clients
-    yum clean all
-    # install wget vim authconfig libselinux-utils initscripts
-    yum install -y wget vim authconfig libselinux-utils initscripts
-    yum clean all
-    rm -rf /var/cache/yum/*
-    [ $? -eq 0 ] && INFO 36 2 "System upgrade && install pakeages complete.\n 系统升级和程序安装完成。"
-}
 
-# OpenSSL
-Install_openSSL() {
-    INFO 32 2 "Install OpenSSL"
-    if [ -e "${ENV_PATH}/openssl/lib/libssl.a" ]; then
-        INFO 31 1 "OpenSSL is already installed!"
-    else
-        pushd ${SOURCE_PATH} >/dev/null
-        tar zxvf ${SOURCE_PATH}/openssl-1.1.1h.tar.gz
-        pushd openssl-1.1.1h >/dev/null
-        make clean
-        ./config -Wl,-rpath=${ENV_PATH}/openssl/lib -fPIC --prefix=${ENV_PATH}/openssl --openssldir=${ENV_PATH}/openssl
-        make depend
-        make -j ${THREAD} && make install
-        popd >/dev/null
-        if [ -f "${ENV_PATH}/openssl/lib/libcrypto.a" ]; then
-            INFO 33 2 "OpenSSL installed successfully!......"
-            rm -rf openssl-1.1.1h
-        else
-            INFO 31 2 "OpenSSL install failed, Please contact the author!" && lsb_release -a
-            kill -9 $$
-        fi
-        popd >/dev/null
-    fi
-}
-# axel
-Install_axel() {
-    INFO 32 2 "Install axel"
-    if [ -e "/usr/bin/axel" ]; then
-        INFO 31 1 "axel is already installed."
-    else
-        yum -y install openssl-devel
-        pushd ${SOURCE_PATH} >/dev/null
-        tar zxvf ${SOURCE_PATH}/axel-2.17.9.tar.gz
-        pushd axel-2.17.9 >/dev/null
-        ./configure --bindir=/usr/bin --sbindir=/usr/sbin
-        make depend
-        make -j ${THREAD} && make install
-        popd >/dev/null
-        grep 'alias axel="axel -a"' /etc/bashrc >/dev/null
-        if [ $? -ne 0 ]; then
-            sed -i '$ a\alias axel="axel -a"' /etc/bashrc
-        fi
-        if [ -f "/usr/bin/axel" ]; then
-            INFO 33 1 "axel installed successfully!......"
-            rm -rf axel-2.17.9
-        else
-            INFO 31 1 "axel install failed, Please contact the author!" && lsb_release -a
-            kill -9 $$
-        fi
-        popd >/dev/null
-    fi
-}
 
-# disable selinux
+# 禁用 selinux
 selinux_config() {
     if [ -e "/etc/selinux/config" ]; then
-        INFO 31 2 "selinux not installed."
+        INFO 31 2 "selinux not installed.\n未安装selinux。"
     else
         sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
         setenforce 0
-        INFO 36 2 "Dsiable selinux complete."
+        INFO 36 2 "Dsiable selinux complete.\n禁用selinux完成。"
     fi
 }
 
-# ulimit comfig
+# 配置 ulimit
 ulimit_config() {
-    INFO 35 2 "Starting config ulimit..."
+    INFO 35 2 "Starting config ulimit...\n开始配置ulimit..."
     if [ ! -z "$(grep ^ulimit /etc/rc.local)" -a "$(grep ^ulimit /etc/rc.local | awk '{print $3}' | head -1)" != '655360' ]; then
         sed -i 's@^ulimit.*@ulimit -SHn 655360@' /etc/rc.local
     else
         sed -i '$ a\ulimit -SHn 655360' /etc/rc.local
     fi
-    cat >/etc/security/limits.conf <<EOF
+    cat > /etc/security/limits.conf << EOF
 * soft nproc 102400
 * hard nproc 102400
 * soft nofile 102400
 * hard nofile 102400
 EOF
     ulimit -n 102400
-    [ $? -eq 0 ] && INFO 36 2 "Ulimit config complete!"
+    [ $? -eq 0 ] && INFO 36 2 "Ulimit config complete!\nUlimit配置完成！"
 }
 
-#set bashrc
+# 配置 bashrc
 bashrc_config() {
-    INFO 35 2 "Starting bashrc config..."
+    INFO 35 2 "Starting bashrc config...\n开始配置系统变量..."
     cp -f /etc/bashrc /etc/bashrc-bak
-    echo "export PS1='\[\e[37;1m\][\[\e[35;49;1m\]\u\[\e[32;1m\]@\[\e[34;1m\]\h \[\e[37;1m\]➜ \[\e[31;1m\]\w \[\e[33;1m\]\t\[\e[37;1m\]]\[\e[32;1m\]$\[\e[m\] '" >>/etc/bashrc
-    sed -i '$ a\alias axel="axel -a"\nset -o vi\nalias vi="vim"\nalias ll="ls -ahlF --color=auto --time-style=long-iso"\nalias ls="ls --color=auto --time-style=long-iso"\nalias grep="grep --color=auto"\nalias fgrep="fgrep --color=auto"\nalias egrep="egrep --color=auto"' /etc/bashrc
-    INFO 36 2 "bashrc set OK!! 系统变量设在完成！！"
+    echo "export PS1='\[\e[37;1m\][\[\e[35;49;1m\]\u\[\e[32;1m\]@\[\e[34;1m\]\h \[\e[37;1m\]➜ \[\e[31;1m\]\w \[\e[33;1m\]\t\[\e[37;1m\]]\[\e[32;1m\]$\[\e[m\] '" >> /etc/bashrc
+    sed -i '$ a\set -o vi\nalias vi="vim"\nalias ll="ls -ahlF --color=auto --time-style=long-iso"\nalias ls="ls --color=auto --time-style=long-iso"\nalias grep="grep --color=auto"\nalias fgrep="fgrep --color=auto"\nalias egrep="egrep --color=auto"' /etc/bashrc
+    INFO 36 2 "bashrc set OK!!\n系统变量设在完成！！"
 }
 
-# install zsh - oh-my-zsh
-Install_zsh() {
-    INFO 35 2 "Starting install zsh..."
-    #LNMP配置文件的目录
-    CONF_PATH="/data/lnmp/conf"
-    if [ $(rpm -qa | grep zsh | wc -l) -ne 0 ]; then
-        INFO 31 1 "zsh already installed..."
-    else
-        yum install -y git zsh autojump-zsh &&
-            INFO 36 2 "zsh installation is successful..."
-    fi
-    INFO 35 2 "Starting install oh-my-zsh..."
-    if [ ! -d ~/.oh-my-zsh ]; then
-        git clone https://gitee.com/mirrors/oh-my-zsh.git ~/.oh-my-zsh &&
-            cp ~/.oh-my-zsh/templates/zshrc.zsh-template ~/.zshrc &&
-            usermod -s /bin/zsh $(whoami) &&
-            cp ${CONF_PATH}/OMZ-theme/panda.zsh-theme ~/.oh-my-zsh/themes/panda.zsh-theme &&
-            cd ~/.oh-my-zsh/custom
-        pwd
-        git clone https://gitee.com/pankla/zsh-syntax-highlighting.git ./plugins/zsh-syntax-highlighting
-        git clone https://gitee.com/pankla/zsh-autosuggestions.git ./plugins/zsh-autosuggestions &&
-            INFO 36 2 "oh-my-zsh installation is successful..."
-        INFO 32 2 "Starting config oh-my-zsh..."
-        sed -i '/^ZSH_THEME/s/ZSH_THEME="robbyrussell"/ZSH_THEME="panda"/g' ~/.zshrc
-        sed -i "/^plugins/s/plugins=(git)/#plugins=(git)/g" ~/.zshrc
-        sed -i '$ a#alias ll="ls -halF"\nalias la="ls -AF"\nalias ls="ls -CF"\nalias l="ls -CF"\nalias grep="grep --color=auto"\n#启用命令纠错功能\n# Uncomment the following line to enable command auto-correction.\nENABLE_CORRECTION="true"\n#enables colorin the terminal bash shell export\nexport CLICOLOR=1\n#setsup thecolor scheme for list export\nexport LSCOLORS=ExfxcxdxBxegedabagacad\n#开启颜色\nautoload -U colors && colors\n#zsh-syntax-highlighting\nexport ZSH_HIGHLIGHT_HIGHLIGHTERS_DIR=$ZSH_CUSTOM/plugins/zsh-syntax-highlighting/highlighters\nsource $ZSH_CUSTOM/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh\n#zsh-autosuggestions\nsource $ZSH_CUSTOM/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh\n#oh-my-zsh插件\nplugins=(git z extract autojump zsh-syntax-highlighting zsh-autosuggestions)\n[ -f /usr/local/etc/profile.d/autojump.sh ] && . /usr/local/etc/profile.d/autojump.sh\n\nsource /etc/profile' ~/.zshrc
-        INFO 36 2 "oh-my-zsh configuration is successful..."
-    else
-        INFO 31 1 "oh-my-zsh already installed..."
-    fi
-}
-
-# sshd config
+# 配置 sshd
 sshd_config() {
-    INFO 35 2 "Starting config sshd..."
+    INFO 35 2 "Starting config sshd...\n开始配置系统权限..."
     sed -i '/^#Port/s/#Port 22/Port '$sshp'/g' /etc/ssh/sshd_config
     sed -i '/^#UseDNS/s/#UseDNS yes/UseDNS no/g' /etc/ssh/sshd_config
+    #禁用密码登陆
+    #sed -i '/^PasswordAuthentication yes/s/PasswordAuthentication yes/PasswordAuthentication no/g' /etc/ssh/sshd_config
+    sed -i '/^#PubkeyAuthentication/s/#PubkeyAuthentication yes/PubkeyAuthentication yes/g' /etc/ssh/sshd_config
     sed -i "s/UsePAM.*/UsePAM yes/g" /etc/ssh/sshd_config
     sed -i '/^GSSAPIAuthentication/s/GSSAPIAuthentication yes/GSSAPIAuthentication no/g' /etc/ssh/sshd_config
     sed -i 's/#PermitEmptyPasswords no/PermitEmptyPasswords no/g' /etc/ssh/sshd_config
     #if you do not want to allow root login,please open below
     #sed -i 's/#PermitRootLogin yes/PermitRootLogin no/g' /etc/ssh/sshd_config
     systemctl restart sshd
-    [ $? -eq 0 ] && INFO 36 2 "SSH port $sshp config complete."
+    [ $? -eq 0 ] && INFO 36 2 "SSH port $sshp config complete.\nSSH 端口: $sshp 设置完毕。"
 }
 
-# firewalld config
-disable_firewalld() {
-    INFO 35 2 "Starting disable firewalld..."
-    rpm -qa | grep firewalld >>/dev/null
+# 配置 firewalld
+config_firewalld() {
+    INFO 35 2 "Starting config firewalld...\n开始配置firewallD防火墙..."
+    rpm -qa | grep firewalld >> /dev/null
     if [ $? -eq 0 ]; then
-        systemctl stop firewalld && systemctl disable firewalld
-        [ $? -eq 0 ] && INFO 36 2 "Disable firewalld complete."
+        #systemctl stop firewalld && systemctl disable firewalld
+        firewall-cmd --permanent --add-port=$sshp/tcp
+        firewall-cmd --rel
+        firewall-cmd --list-all
+        [ $? -eq 0 ] && INFO 36 2 "Config firewalld complete.\n防火墙配置完成。"
     else
-        INFO 35 2 "Firewalld not install."
+        INFO 35 2 "Firewalld not install.\n没有安装FirewallD。"
     fi
 }
 
-# vim config
+# 配置vim
 vim_config() {
-    INFO 35 2 "Starting vim config..."
-    /usr/bin/egrep pastetoggle /etc/vimrc >>/dev/null
+    INFO 35 2 "Starting vim config...\n开始配置vim..."
+    /usr/bin/egrep pastetoggle /etc/vimrc >> /dev/null
     if [ $? -eq 0 ]; then
-        INFO 35 2 "vim already config"
+        INFO 35 2 "vim already config\nvim已经配置"
     else
         sed -i '$ a\set pastetoggle=<F9>\nsyntax on\nset nu!\nset tabstop=4\nset softtabstop=4\nset shiftwidth=4\nset expandtab\nset bg=dark\nset ruler\ncolorscheme ron' /etc/vimrc
-        INFO 36 2 "vim configuration is successful..."
+        INFO 36 2 "vim configuration is successful...\nvim配置成功..."
     fi
 }
 
-# sysctl config
+# 配置sysctl
 config_sysctl() {
-    INFO 35 2 "Staring config sysctl..."
+    INFO 35 2 "Staring config sysctl...\n开始配置sysctl..."
     cp -f /etc/sysctl.conf /etc/sysctl.conf.bak
-    cat /dev/null >/etc/sysctl.conf
-    cat >/etc/sysctl.conf <<EOF
+    cat /dev/null > /etc/sysctl.conf
+    cat > /etc/sysctl.conf << EOF
 fs.file-max = 655350
 vm.swappiness = 0
 vm.dirty_ratio = 20
@@ -330,24 +226,23 @@ net.ipv4.tcp_keepalive_time = 600
 # 开启反向路径过滤
 net.ipv4.conf.all.rp_filter = 1
 EOF
-    /usr/sbin/sysctl -p
-    INFO 36 2 "sysctl config complete."
+    INFO 36 2 "sysctl config complete.\nsysctl 配置完成。"
 }
 
-# ipv6 config
+# 禁用IPv6
 disable_ipv6() {
-    INFO 35 2 "Starting disable ipv6..."
+    INFO 35 2 "Starting disable IPv6...\n开始禁用IPv6..."
     sed -i '$ a\net.ipv6.conf.all.disable_ipv6 = 1\nnet.ipv6.conf.default.disable_ipv6 = 1' /etc/sysctl.conf
     sed -i '$ a\AddressFamily inet' /etc/ssh/sshd_config
     systemctl restart sshd
     /usr/sbin/sysctl -p
     sleep 3
-    INFO 36 2 "disable ipv6 complete."
+    INFO 36 2 "disable IPv6 complete.\nIPv6禁用完成。"
 }
 
-# password config
+# 密码配置
 password_config() {
-    INFO 35 2 "Starting config password rule"
+    INFO 35 2 "Starting config password rule...\n启动配置密码规则..."
     # /etc/login.defs  /etc/security/pwquality.conf
     sed -i '/PASS_MIN_LEN/s/5/8/g' /etc/login.defs
     #at least 8 character
@@ -358,43 +253,71 @@ password_config() {
     authconfig --enablereqlower --update
     #at least 1 Capital letter
     authconfig --enablerequpper --update
-    INFO 36 2 "Config password rule complete."
+    INFO 36 2 "Config password rule complete(8 characters, must contain uppercase and lowercase letters).\n密码规则设置完成（8个字符，必须包含大小写字母）。"
 }
 
-# disable no use service
+# 禁用不使用服务
 disable_serivces() {
-    INFO 35 2 "Disable postfix service"
+    INFO 35 2 "Disable postfix service.\n禁用 postfix 服务。"
     systemctl stop postfix && systemctl disable postfix
-    INFO 36 2 "Disable postfix service complete."
+    INFO 36 2 "Disable postfix service complete.\n禁用postfix服务完成。"
+}
+
+#创建新用户
+user_create() {
+    INFO 35 2 "Create User\n创建新用户"
+    sleep 1
+    read -p "输入用户名：" name
+    printf "输入密码：\n"
+    read -s -r pass
+    printf "再次确认密码：\n"
+    read -s -r passwd
+    if [ $pass != $passwd ]
+    then
+        printf "两次密码输入有误, 请重新输入\n"
+        user_create
+    else
+    printf "输入您的公钥(*重启后仅允许密钥登陆，禁止root用户登陆)：\n"
+    read rsa
+    printf "输入ssh端口号：\n"
+    read sshp
+    useradd -G wheel $name && echo $Password | passwd --stdin $name &> /dev/null
+    cd /home/$name && mkdir .ssh && chown $name:$name .ssh && chmod 700 .ssh && cd .ssh
+    echo "$rsa" >> authorized_keys && chown $name:$name authorized_keys && chmod 600 authorized_keys
+    echo "$name ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+    history -cw
+    sleep 3
+    echo ""
+    INFO 36 2 "User: \e[33;1m$name \e[36;1mcreate is successful..."
+    echo ""
+fi
 }
 
 other() {
     # Record command
     # lock user when enter wrong password root 10s others 180s
     sed -i '1aauth       required     pam_tally2.so deny=3 unlock_time=180 even_deny_root root_unlock_time=10' /etc/pam.d/sshd
+    yum clean all
     sleep 3
 }
 
 #main function
 main() {
-    user_create
-    user_del
+    system_update
     config_nameserver
     timezone_config
-    system_update
-    Install_openSSL
-    Install_axel
     selinux_config
     ulimit_config
     bashrc_config
-    sshd_config
-    disable_firewalld
     vim_config
     config_sysctl
     disable_ipv6
     password_config
     disable_serivces
-    Install_zsh
+    user_del
+    user_create
+    sshd_config
+    config_firewalld
     other
 }
 # execute main functions
@@ -409,7 +332,6 @@ printf "
  |                        系统初始化全部完成 ！                           |
  +------------------------------------------------------------------------+
 "
-
-INFO 32 1 "Initialization is complete, please \e[31;1mreboot \e[32;1mthe system!!\n 系统初始化完成，请确认无误之后执行 \e[31;1mreboot \e[32;1m重启系统！\n================================\nssh端口号：\e[33;1m$sshp\n\e[32;1m服务器IP：\e[33;1m$ipadd\n\e[32;1m用户名：\e[33;1m$name\n\e[32;1m密码：\e[33;1m$passwd\n\e[32;1m请牢记您的密码!!!\n================================\n远程访问：\e[33;1mssh -p $sshp $name@$ipadd"
-cat /dev/null >~/.bash_history
-cat /dev/null >~/.zsh_history
+ipadd=$(ifconfig eth0 | awk '/inet/ {print $2}' | cut -f2 -d ":" | awk 'NR==1 {print $1}')
+INFO 32 1 "Initialization is complete, please \e[31;1mreboot \e[32;1mthe system!!\n 系统初始化完成，请确认无误之后执行 \e[31;1mreboot \e[32;1m重启系统！\n================================\nssh端口号：\e[33;1m$sshp\n\e[32;1m服务器IP：\e[33;1m$ipadd\n\e[32;1m用户名：\e[33;1m$name\n\e[32;1m密码：\e[33;1m$passwd\n\e[32;1m请牢记您的密码!!!\n================================\n远程访问：\e[33;1mssh -p $sshp -i ~/.ssh/私钥文件 $name@$ipadd"
+cat /dev/null > ~/.bash_history && history -c
