@@ -174,11 +174,11 @@ sshd_config() {
 }
 
 # 配置 firewalld
-disable_firewalld() {
+config_firewalld() {
     INFO 35 2 "Starting config firewalld...\n开始配置firewallD防火墙..."
     rpm -qa | grep firewalld >> /dev/null
     if [ $? -eq 0 ]; then
-        #systemctl stop firewalld && systemctl disable firewalld
+        systemctl start firewalld && systemctl enable firewalld
         firewall-cmd --permanent --add-port=$sshp/tcp
         firewall-cmd --rel
         firewall-cmd --list-all
@@ -311,7 +311,7 @@ main() {
     selinux_config
     ulimit_config
     sshd_config
-    disable_firewalld
+    config_firewalld
     bashrc_config
     vim_config
     config_sysctl
