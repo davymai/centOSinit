@@ -30,7 +30,18 @@ SOURCE_PATH="$(cd $(dirname -- $0); pwd)/install_tar"
 CONF_PATH="$(cd $(dirname -- $0); pwd)/conf"
 #逻辑CPU个数
 THREAD=$(grep 'processor' /proc/cpuinfo | sort -u | wc -l)
-
+#IP地址
+#ipadd=$(ifconfig eth0 | awk '/inet/ {print $2}' | cut -f2 -d ":" | awk 'NR==1 {print $1}')
+ipadd=$(ifconfig eth0 | awk '{print $2}' | awk 'NR==2 {print $1}')
+#网关地址
+gateway=$(netstat -rn | awk '{print $2}' | awk 'NR==3 {print $1}')
+#子网掩码
+#netmask=$(ifconfig eth0 | awk '/inet/ {print $4}' | cut -f2 -d ":" | awk 'NR==1 {print $1}')
+netmask=$(ifconfig eth0 | awk '{print $4}' | awk 'NR==2 {print $1}')
+#DNS1
+dns1=$(cat /etc/resolv.conf | awk '/nameserver/ {print $2}' | awk 'NR==1 {print $1}')
+#DNS2
+dns2=$(cat /etc/resolv.conf | awk '/nameserver/ {print $2}' | awk 'NR==2 {print $1}')
 printf "
  +------------------------------------------------------------------------+
  |                      熊猫 CentOS 7.x 初始化脚本                        |
@@ -47,7 +58,7 @@ echo ""
 
 # Check if user is root
 if [ $(id -u) != "0" ]; then
-    INFO 31 1 "Error: You must be root to run this script, please use root to initialization OS.\n 错误：您必须是 root 用户才能运行此脚本，请使用 root 用户身份来初始化操作系统。"
+    INFO 31 1 "Error: You must be root to run this script, please use root to initialization OS.\n 错误: 您必须是 root 用户才能运行此脚本，请使用 root 用户身份来初始化操作系统。"
     exit 1
 fi
 sleep 5
@@ -85,27 +96,27 @@ user_del() {
     groupdel video
     groupdel ftp
     echo ""
-    INFO 36 2 "Delete useless user is successful...\n删除无用的用户完成。"
+    INFO 36 2 "Delete useless user is successful...\n 删除无用的用户完成。"
 }
 
 # 配置DNS服务器
 config_nameserver() {
     nameserver=$(grep nameserver /etc/resolv.conf | wc -l)
     if [ $nameserver -ge 1 ]; then
-        INFO 31 2 "nameserver is exist.\nDNS服务器已存在。"
+        INFO 31 2 "nameserver is exist.\n DNS服务器已存在。"
     else
         INFO 32 2 "add nameserver in /etc/resolv.conf"
         echo "nameserver 223.5.5.5" >> /etc/resolv.conf
-        INFO 36 2 "nameserver config complete.\nDNS服务器配置完成。"
+        INFO 36 2 "nameserver config complete.\n DNS服务器配置完成。"
     fi
 }
 
 # 设置时区同步
 timezone_config() {
-    INFO 35 2 "Setting timezone: Asia/Shanghai...\n设置时区为: Asia/Shanghai"
+    INFO 35 2 "Setting timezone: Asia/Shanghai...\n 设置时区为: Asia/Shanghai"
     /usr/bin/timedatectl | grep "Asia/Shanghai"
     if [ $? -eq 0 ]; then
-        INFO 33 1 "System timezone is Asia/Shanghai.\n系统时区为Asia/Shanghai。"
+        INFO 33 1 "System timezone is Asia/Shanghai.\n 系统时区为Asia/Shanghai。"
     else
         timedatectl set-local-rtc 0 && timedatectl set-timezone Asia/Shanghai
     fi
@@ -113,7 +124,7 @@ timezone_config() {
     #yum -y install chrony
     #sed -i '/server 3.centos.pool.ntp.org iburst/a\\server ntp1.aliyun.com iburst\nserver ntp2.aliyun.com iburst\nserver ntp3.aliyun.com iburst\nserver ntp4.aliyun.com iburst\nserver ntp5.aliyun.com iburst\nserver ntp6.aliyun.com iburst\nserver ntp7.aliyun.com iburst' /etc/chrony.conf
     #systemctl enable chronyd.service && systemctl start chronyd.service
-    INFO 36 2 "Setting timezone & Sync network time complete.\n设置时区和同步网络时间完成。"
+    INFO 36 2 "Setting timezone & Sync network time complete.\n 设置时区和同步网络时间完成。"
 }
 
 
@@ -121,17 +132,17 @@ timezone_config() {
 # 禁用 selinux
 selinux_config() {
     if [ -e "/etc/selinux/config" ]; then
-        INFO 31 2 "selinux not installed.\n未安装selinux。"
+        INFO 31 2 "selinux not installed.\n 未安装selinux。"
     else
         sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
         setenforce 0
-        INFO 36 2 "Dsiable selinux complete.\n禁用selinux完成。"
+        INFO 36 2 "Dsiable selinux complete.\n 禁用selinux完成。"
     fi
 }
 
 # 配置 ulimit
 ulimit_config() {
-    INFO 35 2 "Starting config ulimit...\n开始配置ulimit..."
+    INFO 35 2 "Starting config ulimit...\n 开始配置ulimit..."
     if [ ! -z "$(grep ^ulimit /etc/rc.local)" -a "$(grep ^ulimit /etc/rc.local | awk '{print $3}' | head -1)" != '655360' ]; then
         sed -i 's@^ulimit.*@ulimit -SHn 655360@' /etc/rc.local
     else
@@ -144,21 +155,21 @@ ulimit_config() {
 * hard nofile 102400
 EOF
     ulimit -n 102400
-    [ $? -eq 0 ] && INFO 36 2 "Ulimit config complete!\nUlimit配置完成！"
+    [ $? -eq 0 ] && INFO 36 2 "Ulimit config complete!\n Ulimit配置完成！"
 }
 
 # 配置 bashrc
 bashrc_config() {
-    INFO 35 2 "Starting bashrc config...\n开始配置系统变量..."
+    INFO 35 2 "Starting bashrc config...\n 开始配置系统变量..."
     cp -f /etc/bashrc /etc/bashrc-bak
     echo "export PS1='\[\e[37;1m\][\[\e[35;49;1m\]\u\[\e[32;1m\]@\[\e[34;1m\]\h \[\e[37;1m\]➜ \[\e[31;1m\]\w \[\e[33;1m\]\t\[\e[37;1m\]]\[\e[32;1m\]$\[\e[m\] '" >> /etc/bashrc
     sed -i '$ a\set -o vi\nalias vi="vim"\nalias ll="ls -ahlF --color=auto --time-style=long-iso"\nalias ls="ls --color=auto --time-style=long-iso"\nalias grep="grep --color=auto"\nalias fgrep="fgrep --color=auto"\nalias egrep="egrep --color=auto"' /etc/bashrc
-    INFO 36 2 "bashrc set OK!!\n系统变量设在完成！！"
+    INFO 36 2 "bashrc set OK!!\n 系统变量设在完成！！"
 }
 
 # 配置 sshd
 sshd_config() {
-    INFO 35 2 "Starting config sshd...\n开始配置系统权限..."
+    INFO 35 2 "Starting config sshd...\n 开始配置系统权限..."
     sed -i '/^#Port/s/#Port 22/Port '$sshp'/g' /etc/ssh/sshd_config
     sed -i '/^#UseDNS/s/#UseDNS yes/UseDNS no/g' /etc/ssh/sshd_config
     #禁用密码登陆
@@ -170,39 +181,39 @@ sshd_config() {
     #if you do not want to allow root login,please open below
     sed -i 's/#PermitRootLogin yes/PermitRootLogin no/g' /etc/ssh/sshd_config
     systemctl restart sshd
-    [ $? -eq 0 ] && INFO 36 2 "SSH port $sshp config complete.\nSSH 端口: $sshp 设置完毕。"
+    [ $? -eq 0 ] && INFO 36 2 "SSH port $sshp config complete.\n SSH 端口: $sshp 设置完毕。"
 }
 
 # 配置 firewalld
 config_firewalld() {
-    INFO 35 2 "Starting config firewalld...\n开始配置firewallD防火墙..."
+    INFO 35 2 "Starting config firewalld...\n 开始配置firewallD防火墙..."
     rpm -qa | grep firewalld >> /dev/null
     if [ $? -eq 0 ]; then
         systemctl start firewalld && systemctl enable firewalld
         firewall-cmd --permanent --add-port=$sshp/tcp
         firewall-cmd --rel
         firewall-cmd --list-all
-        [ $? -eq 0 ] && INFO 36 2 "Config firewalld complete.\n防火墙配置完成。"
+        [ $? -eq 0 ] && INFO 36 2 "Config firewalld complete.\n 防火墙配置完成。"
     else
-        INFO 35 2 "Firewalld not install.\n没有安装FirewallD。"
+        INFO 35 2 "Firewalld not install.\n 没有安装FirewallD。"
     fi
 }
 
 # 配置vim
 vim_config() {
-    INFO 35 2 "Starting vim config...\n开始配置vim..."
+    INFO 35 2 "Starting vim config...\n 开始配置vim..."
     /usr/bin/egrep pastetoggle /etc/vimrc >> /dev/null
     if [ $? -eq 0 ]; then
-        INFO 35 2 "vim already config\nvim已经配置"
+        INFO 35 2 "vim already config\n vim已经配置"
     else
         sed -i '$ a\set pastetoggle=<F9>\nsyntax on\nset nu!\nset tabstop=4\nset softtabstop=4\nset shiftwidth=4\nset expandtab\nset bg=dark\nset ruler\ncolorscheme ron' /etc/vimrc
-        INFO 36 2 "vim configuration is successful...\nvim配置成功..."
+        INFO 36 2 "vim configuration is successful...\n vim配置完成..."
     fi
 }
 
 # 配置sysctl
 config_sysctl() {
-    INFO 35 2 "Staring config sysctl...\n开始配置sysctl..."
+    INFO 35 2 "Staring config sysctl...\n 开始配置sysctl..."
     cp -f /etc/sysctl.conf /etc/sysctl.conf.bak
     cat /dev/null > /etc/sysctl.conf
     cat > /etc/sysctl.conf << EOF
@@ -226,23 +237,23 @@ net.ipv4.tcp_max_tw_buckets = 8000
 # 开启反向路径过滤
 net.ipv4.conf.all.rp_filter = 1
 EOF
-    INFO 36 2 "sysctl config complete.\nsysctl 配置完成。"
+    INFO 36 2 "sysctl config complete.\n sysctl 配置完成。"
 }
 
 # 禁用IPv6
 disable_ipv6() {
-    INFO 35 2 "Starting disable IPv6...\n开始禁用IPv6..."
+    INFO 35 2 "Starting disable IPv6...\n 开始禁用IPv6..."
     sed -i '$ a\net.ipv6.conf.all.disable_ipv6 = 1\nnet.ipv6.conf.default.disable_ipv6 = 1' /etc/sysctl.conf
     sed -i '$ a\AddressFamily inet' /etc/ssh/sshd_config
     systemctl restart sshd
     /usr/sbin/sysctl -p
     sleep 3
-    INFO 36 2 "disable IPv6 complete.\nIPv6禁用完成。"
+    INFO 36 2 "disable IPv6 complete.\n IPv6禁用完成。"
 }
 
 # 密码配置
 password_config() {
-    INFO 35 2 "Starting config password rule...\n启动配置密码规则..."
+    INFO 35 2 "Starting config password rule...\n 启动配置密码规则..."
     # /etc/login.defs  /etc/security/pwquality.conf
     sed -i '/PASS_MIN_LEN/s/5/8/g' /etc/login.defs
     #at least 8 character
@@ -253,33 +264,33 @@ password_config() {
     authconfig --enablereqlower --update
     #at least 1 Capital letter
     authconfig --enablerequpper --update
-    INFO 36 2 "Config password rule complete(8 characters, must contain uppercase and lowercase letters).\n密码规则设置完成（8个字符，必须包含大小写字母）。"
+    INFO 36 2 "Config password rule complete(8 characters, must contain uppercase and lowercase letters).\n密码规则设置完成 (8个字符，必须包含大小写字母)。"
 }
 
 # 禁用不使用服务
 disable_serivces() {
-    INFO 35 2 "Disable postfix service.\n禁用 postfix 服务。"
+    INFO 35 2 "Disable postfix service.\n 禁用 postfix 服务。"
     systemctl stop postfix && systemctl disable postfix
-    INFO 36 2 "Disable postfix service complete.\n禁用postfix服务完成。"
+    INFO 36 2 "Disable postfix service complete.\n 禁用postfix服务完成。"
 }
 
-#创建新用户
+# 创建新用户
 user_create() {
-    INFO 35 2 "Create User\n创建新用户"
+    INFO 35 2 "Create User\n 创建新用户"
     sleep 1
-    read -p "输入用户名：" name
-    printf "输入密码：\n"
+    read -p "输入用户名: " name
+    printf "输入密码: \n"
     read -s -r pass
-    printf "再次确认密码：\n"
+    printf "再次确认密码: \n"
     read -s -r passwd
     if [ $pass != $passwd ]
     then
         printf "两次密码输入有误, 请重新输入\n"
         user_create
     else
-    printf "输入您的公钥(*重启后仅允许密钥登陆，禁止root用户登陆)：\n"
+    printf "输入您的公钥(*重启后仅允许密钥登陆，禁止root用户登陆): \n"
     read rsa
-    printf "输入ssh端口号：\n"
+    printf "输入ssh端口号: \n"
     read sshp
     useradd -G wheel $name && echo $Password | passwd --stdin $name &> /dev/null
     cd /home/$name && mkdir .ssh && chown $name:$name .ssh && chmod 700 .ssh && cd .ssh
@@ -288,9 +299,49 @@ user_create() {
     history -cw
     sleep 3
     echo ""
-    INFO 36 2 "User: \e[33;1m$name \e[36;1mcreate is successful..."
+    INFO 36 2 "User: \e[33;1m$name \e[36;1mcreate is successful...\n 用户: \e[33;1m$name \e[36;1m创建完成！"
     echo ""
 fi
+}
+
+# 设置IP地址
+config_ipaddr() {
+    INFO 35 2 "Configure the IP address\n 配置 IP 地址"
+    sleep 1
+    read -p "输入IP地址 (默认地址: $ipadd): \n" IPADDR
+    read -p "输入网关地址 (默认地址: $gateway): \n" GATEWAY
+    read -p "输入子网掩码 (默认地址: $netmask): \n" NETMASK
+    read -p "输入主要DNS服务器 (默认地址1: $dns1): \n" DNS1
+    read -p "输入辅助DNS服务器 (默认地址2: $dns2): \n" DNS2
+    sed -i 's/BOOTPROTO="dhcp"/BOOTPROTO="static"/g' /etc/sysconfig/network-scripts/ifcfg-eth0
+    if [ $IPADDR == '' ] then
+        sed -i '$ a\IPADDR='$ipadd'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    else
+        sed -i '$ a\IPADDR='$IPADDR'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    fi
+    if [ $GATEWAY == '' ] then
+        sed -i '$ a\GATEWAY='$gateway'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    else
+        sed -i '$ a\GATEWAY='$GATEWAY'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    fi
+    if [ $NETMASK == '' ] then
+        sed -i '$ a\NETMASK='$netmask'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    else
+        sed -i '$ a\NETMASK='$NETMASK'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    fi
+    if [ $DNS1 == '' ] then
+        sed -i '$ a\DNS1='$dns1'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    else
+        sed -i '$ a\DNS1='$DNS1'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    fi
+    if [ $DNS2 == '' ] then
+        sed -i '$ a\DNS2='$dns2'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    else
+        sed -i '$ a\DNS2='$DNS2'' /etc/sysconfig/network-scripts/ifcfg-eth0
+    fi
+    sleep 3
+    echo ""
+    INFO 36 2 "IP address configuration is successful...\n IP地址配置完成..."
 }
 
 other() {
@@ -318,6 +369,7 @@ main() {
     disable_ipv6
     password_config
     disable_serivces
+    config_ipaddr
     other
 }
 # execute main functions
@@ -332,6 +384,6 @@ printf "
  |                        系统初始化全部完成 ！                           |
  +------------------------------------------------------------------------+
 "
-ipadd=$(ifconfig eth0 | awk '/inet/ {print $2}' | cut -f2 -d ":" | awk 'NR==1 {print $1}')
-INFO 32 1 "Initialization is complete, please \e[31;1mreboot \e[32;1mthe system!!\n 系统初始化完成，请确认无误之后执行 \e[31;1mreboot \e[32;1m重启系统！\n================================\nssh端口号：\e[33;1m$sshp\n\e[32;1m服务器IP：\e[33;1m$ipadd\n\e[32;1m用户名：\e[33;1m$name\n\e[32;1m密码：\e[33;1m$passwd\n\e[32;1m请牢记您的密码!!!\n================================\n远程访问：\e[33;1mssh -p $sshp -i ~/.ssh/私钥文件 $name@$ipadd"
+IPA=$(ifconfig eth0 | awk '{print $2}' | awk 'NR==2 {print $1}')
+INFO 32 1 "Initialization is complete, please \e[31;1mreboot \e[32;1mthe system!!\n 系统初始化完成，请确认无误之后执行 \e[31;1mreboot \e[32;1m重启系统！\n================================\nssh端口号: \e[33;1m$sshp\n\e[32;1m服务器IP: \e[33;1m$IPA\n\e[32;1m用户名: \e[33;1m$name\n\e[32;1m密码: \e[33;1m$passwd\n\e[32;1m请牢记您的密码!!!\n================================\n远程访问: \e[33;1mssh -p $sshp -i ~/.ssh/私钥文件 $name@$IPA"
 cat /dev/null > ~/.bash_history && history -c
